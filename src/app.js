@@ -3,7 +3,7 @@ import express from "express";
 import morgan from "morgan";
 import cors from "cors";
 import helmet from "helmet";
-import path from "path"; // ✅ REQUIRED (you forgot this)
+import path from "path";
 
 import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
@@ -17,10 +17,18 @@ import jobRoutes from "./routes/job.routes.js";
 import engageRoutes from "./routes/engage.routes.js";
 import hireRoutes from "./routes/hireRoutes.js";
 
-// ✅ Correct Business Route file (your actual file)
+// ✅ Business Route file
 import businessRoutes from "./routes/businessRoutes.js";
 
 const app = express();
+
+/* 🔹 GLOBAL REQUEST LOGGER
+   -> sabse upar rakha hai, taaki har request dikh jaaye
+*/
+app.use((req, res, next) => {
+  console.log(">>>", req.method, req.originalUrl, "from", req.ip);
+  next();
+});
 
 // ----- Core middleware -----
 const allow = (process.env.CORS_ORIGINS || "")
@@ -31,23 +39,31 @@ const allow = (process.env.CORS_ORIGINS || "")
 app.use(cors({ origin: allow.length ? allow : true, credentials: true }));
 app.use(helmet());
 
-// YAHAN NAYA LIMIT
+// 🔹 Body size limit badha diya (images ke liye)
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 app.use(morgan("dev"));
 
 // ----- Health check -----
-app.get("/health", (req, res) => res.json({ ok: true, uptime: process.uptime() }));
-app.get("/", (req, res) => res.json({ message: "Welcome to E-Rojgar API 🚀" }));
-// ----- Business API (ONLY once) -----
+app.get("/health", (req, res) =>
+  res.json({ ok: true, uptime: process.uptime() })
+);
+
+app.get("/", (req, res) =>
+  res.json({ message: "Welcome to E-Rojgar API 🚀" })
+);
 
 // ----- API Routes -----
 app.use("/api/user", userRoutes);
 app.use("/api/works", workRoutes);
 app.use("/api/jobs", jobRoutes);
 app.use("/api/aadhaar", aadhaarRoutes);
+
+// ✅ Business API
 app.use("/api/business", businessRoutes);
+
+// Hire routes
 app.use("/api", hireRoutes);
 
 // ----- Serve uploads -----
@@ -58,13 +74,9 @@ app.use("/api/engage", engageRoutes);
 
 // ----- 404 -----
 app.use((req, res) => {
-  res.status(404).json({ isSuccess: false, error: "NOT_FOUND" });
-});
-
-// ----- Optional request logger -----
-app.use((req, res, next) => {
-  console.log(">>> INCOMING REQUEST:", req.method, req.path, "from", req.ip);
-  next();
+  return res
+    .status(404)
+    .json({ isSuccess: false, error: "NOT_FOUND" });
 });
 
 export default app;
