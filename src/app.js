@@ -78,5 +78,9 @@ app.use((req, res) => {
     .status(404)
     .json({ isSuccess: false, error: "NOT_FOUND" });
 });
+app.use((req, res, next) => {
+  console.log(">>>", req.method, req.originalUrl, "from", req.ip);
+  next();
+});
 
 export default app;
