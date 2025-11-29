@@ -184,11 +184,36 @@ const normalizeWork = (w) => {
  */
 router.post("/upload", async (req, res) => {
   try {
-    const { workName, name, description = "", coords, posterUid } = req.body;
+    // 🆕 1) SABSE PEHLE: check karo ki request bilkul khaali to nahi
+    const { workName, name, description = "", coords, posterUid } = req.body || {};
+
+    const noMainFields =
+      !workName &&
+      !name &&
+      !coords &&
+      !posterUid &&
+      (!description || String(description).trim().length === 0);
+
+    const noFiles = !req.files || req.files.length === 0;
+
+    if (noMainFields && noFiles) {
+      // 👉 Ye woh “background / extra” call hai jisme kuch bhi data nahi aa raha.
+      //    Isko hum simply success treat kar denge, taaki MISSING_PARAMS popup na aaye.
+      return res.status(200).json({
+        isSuccess: true,
+        data: null,
+        error: null,
+      });
+    }
+
+    // ⬇️ 2) Yahan se neeche **tumhara purana logic same rakha hai** 👇
+
     const finalName = workName || name;
 
     if (!finalName || !coords || !posterUid) {
-      return res.status(400).json({ isSuccess: false, error: "MISSING_PARAMS" });
+      return res
+        .status(400)
+        .json({ isSuccess: false, error: "MISSING_PARAMS" });
     }
 
     // --- parse coords into GeoJSON [lng, lat]
@@ -206,7 +231,11 @@ router.post("/upload", async (req, res) => {
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
         lngLat = [lng, lat];
       }
-    } else if (coords && typeof coords === "object" && (coords.lat !== undefined || coords.lng !== undefined)) {
+    } else if (
+      coords &&
+      typeof coords === "object" &&
+      (coords.lat !== undefined || coords.lng !== undefined)
+    ) {
       const lat = Number(coords.lat);
       const lng = Number(coords.lng);
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
@@ -215,7 +244,9 @@ router.post("/upload", async (req, res) => {
     }
 
     if (!lngLat) {
-      return res.status(400).json({ isSuccess: false, error: "INVALID_COORDS" });
+      return res
+        .status(400)
+        .json({ isSuccess: false, error: "INVALID_COORDS" });
     }
 
     // --- find latest existing work for this posterUid
@@ -228,7 +259,10 @@ router.post("/upload", async (req, res) => {
     // --- decide visible for new work (inherit)
     let decidedVisible = true;
     if (latest) {
-      if (latest.location && typeof latest.location.visible !== "undefined") {
+      if (
+        latest.location &&
+        typeof latest.location.visible !== "undefined"
+      ) {
         decidedVisible = !!latest.location.visible;
       } else if (typeof latest.visible !== "undefined") {
         decidedVisible = !!latest.visible;
@@ -247,9 +281,13 @@ router.post("/upload", async (req, res) => {
         .lean();
 
       if (engageDoc) {
-        if (typeof engageDoc.isBusy === "boolean") posterBusy = !!engageDoc.isBusy;
-        else if (typeof engageDoc.busy === "boolean") posterBusy = !!engageDoc.busy;
-        else if (typeof engageDoc.status === "string") posterBusy = String(engageDoc.status).toLowerCase() === "busy";
+        if (typeof engageDoc.isBusy === "boolean")
+          posterBusy = !!engageDoc.isBusy;
+        else if (typeof engageDoc.busy === "boolean")
+          posterBusy = !!engageDoc.busy;
+        else if (typeof engageDoc.status === "string")
+          posterBusy =
+            String(engageDoc.status).toLowerCase() === "busy";
         else posterBusy = false;
       } else {
         posterBusy = false;
@@ -263,9 +301,16 @@ router.post("/upload", async (req, res) => {
     let addressPayload = null;
     try {
       const locFromBody = req.body && req.body.location;
-      if (locFromBody && locFromBody.address !== undefined && locFromBody.address !== null) {
+      if (
+        locFromBody &&
+        locFromBody.address !== undefined &&
+        locFromBody.address !== null
+      ) {
         addressPayload = normalizeAddress(locFromBody.address);
-      } else if (req.body.address !== undefined && req.body.address !== null) {
+      } else if (
+        req.body.address !== undefined &&
+        req.body.address !== null
+      ) {
         addressPayload = normalizeAddress(req.body.address);
       } else {
         addressPayload = null;
@@ -295,7 +340,9 @@ router.post("/upload", async (req, res) => {
 
     // --- denormalize poster snapshot (include posterBusy)
     try {
-      const user = await User.findOne({ uid: posterUid }).lean().catch(() => null);
+      const user = await User.findOne({ uid: posterUid })
+        .lean()
+        .catch(() => null);
       if (user) {
         newWork.poster = {
           uid: user.uid || posterUid,
@@ -309,10 +356,20 @@ router.post("/upload", async (req, res) => {
           postedByUid: posterUid,
         };
       } else {
-        newWork.poster = { uid: posterUid, name: "", posterBusy: !!posterBusy, postedByUid: posterUid };
+        newWork.poster = {
+          uid: posterUid,
+          name: "",
+          posterBusy: !!posterBusy,
+          postedByUid: posterUid,
+        };
       }
     } catch (snapErr) {
-      newWork.poster = { uid: posterUid, name: "", posterBusy: !!posterBusy, postedByUid: posterUid };
+      newWork.poster = {
+        uid: posterUid,
+        name: "",
+        posterBusy: !!posterBusy,
+        postedByUid: posterUid,
+      };
     }
 
     // --- save
@@ -322,9 +379,16 @@ router.post("/upload", async (req, res) => {
     return res.json({ isSuccess: true, data: saved });
   } catch (err) {
     console.error("POST /api/works/upload error:", err);
-    return res.status(500).json({ isSuccess: false, error: "UPLOAD_FAILED", errorDetail: err.message || String(err) });
+    return res
+      .status(500)
+      .json({
+        isSuccess: false,
+        error: "UPLOAD_FAILED",
+        errorDetail: err.message || String(err),
+      });
   }
 });
+
 
 /**
  * GET /api/works/nearby
