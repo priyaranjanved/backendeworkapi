@@ -98,20 +98,22 @@ const buildLocation = (body, parsedAddress) => {
  *  - images[] (files)  OR  images (URL / URLs)
  *  - postedBy / postedByUid OR from req.user
  */
+// 👇 नया simple createBusiness
 export const createBusiness = async (req, res) => {
   try {
     const {
       businessName,
       businessDescription,
-      address,
-      images,
       lat,
       lng,
-      location: locationRaw,
+      address,      // string "Buxar, Bihar, India"
+      images,       // array (base64/url), optional
+      postedByUid,  // optional, mobile se aa raha hai
+      postedBy,     // optional
     } = req.body;
 
-    // ----- Basic validation -----
-    if (!businessName || typeof businessName !== "string" || !businessName.trim()) {
+    // ------- Basic validation -------
+    if (!businessName || !businessName.trim()) {
       return res.status(400).json({
         isSuccess: false,
         data: null,
@@ -119,91 +121,51 @@ export const createBusiness = async (req, res) => {
       });
     }
 
-    // ----- Address -----
-    const parsedAddress = parseAddress(address);
-
-    // ----- Location -----
-    let location;
-    try {
-      if (locationRaw) {
-        // agar location JSON string / object diya ho
-        let loc = locationRaw;
-        if (typeof loc === "string") {
-          loc = JSON.parse(loc);
-        }
-        location = buildLocation(
-          {
-            location: loc,
-          },
-          parsedAddress
-        );
-      } else if (lat && lng) {
-        location = buildLocation({ lat, lng }, parsedAddress);
-      } else {
-        throw new Error("Location (lat/lng) required");
-      }
-    } catch (e) {
+    if (lat == null || lng == null) {
       return res.status(400).json({
         isSuccess: false,
         data: null,
-        error: e.message || "Invalid location",
+        error: "lat & lng are required",
       });
     }
 
-    // ----- Images from JSON -----
+    const latitude = Number(lat);
+    const longitude = Number(lng);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return res.status(400).json({
+        isSuccess: false,
+        data: null,
+        error: "Invalid lat/lng values",
+      });
+    }
+
+    // ------- Images (max 5) -------
     let imageList = [];
-    if (images) {
-      if (Array.isArray(images)) {
-        imageList = images.filter((x) => typeof x === "string" && x.trim().length > 0);
-      } else if (typeof images === "string") {
-        try {
-          const arr = JSON.parse(images);
-          if (Array.isArray(arr)) {
-            imageList = arr.filter(
-              (x) => typeof x === "string" && x.trim().length > 0
-            );
-          } else if (images.trim().length > 0) {
-            imageList = [images.trim()];
-          }
-        } catch {
-          if (images.trim().length > 0) {
-            imageList = [images.trim()];
-          }
-        }
-      }
+    if (Array.isArray(images)) {
+      imageList = images
+        .filter((x) => typeof x === "string" && x.trim().length > 0)
+        .slice(0, 5);
     }
 
-    // max 5 enforce (safety)
-    if (imageList.length > 5) {
-      imageList = imageList.slice(0, 5);
-    }
+    // ------- Location object (schema ke according) -------
+    const location = {
+      type: "Point",
+      coordinates: [longitude, latitude], // [lng, lat]
+      address: {
+        formatted: address || "",
+      },
+      visible: true,
+    };
 
-    // ----- Poster info (optional) -----
-    const postedBy = req.user?._id || req.body.postedBy || null;
-    const postedByUid = req.user?.uid || req.body.postedByUid || null;
-
-    const poster = req.user
-      ? {
-          uid: req.user.uid,
-          name: req.user.name,
-          age: req.user.age,
-          mobile: req.user.mobile,
-          type: req.user.type,
-          gender: req.user.gender,
-          planType: req.user.planType,
-          posterBusy: req.user.posterBusy || false,
-        }
-      : undefined;
-
-    // ----- Create & save -----
+    // ------- Create & save -------
     const business = await Business.create({
       businessName: businessName.trim(),
       businessDescription,
       location,
-      images: imageList,   // ⬅️ Yahi array MongoDB me save hoga
-      postedBy,
-      postedByUid,
-      poster,
+      images: imageList,
+      postedBy: postedBy || null,
+      postedByUid: postedByUid || null,
     });
 
     return res.status(201).json({
