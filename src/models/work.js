@@ -136,7 +136,7 @@ const workSchema = new mongoose.Schema(
 workSchema.index({ location: "2dsphere" });
 workSchema.index({ location: "2dsphere", "location.visible": 1 });
 // also add a simple index on postedByUid for by-user lookups
-workSchema.index({ postedByUid: 1 });
+workSchema.index({ postedByUid: 1 }); 
 // ADD these for the nested poster flag
 workSchema.index({ "poster.posterBusy": 1 });
 workSchema.index({ "location.visible": 1, "poster.posterBusy": 1 });

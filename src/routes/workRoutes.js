@@ -545,7 +545,7 @@ return res.json({
  * - If ownerUid equals requester, return all works for owner; otherwise only visible.
  */
 router.get("/", async (req, res) => {
-  try {
+  try { 
     const ownerUid = req.query?.ownerUid;
     const asUid = req.query?.asUid;
     const requesterUid = req.user ? (req.user.uid || (req.user._id ? String(req.user._id) : null)) : asUid;
