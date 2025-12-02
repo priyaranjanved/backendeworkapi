@@ -338,6 +338,6 @@ router.get("/nearby", getNearbyBusinesses);
 
 // ✅ Get single business
 router.get("/:id", getBusiness);
-
+  
 
 export default router;

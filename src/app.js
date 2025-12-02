@@ -16,7 +16,7 @@ import workRoutes from "./routes/workRoutes.js";
 import jobRoutes from "./routes/job.routes.js";
 import engageRoutes from "./routes/engage.routes.js";
 import hireRoutes from "./routes/hireRoutes.js";
-
+import appConfigRoutes from "./routes/appConfig.routes.js";
 // ✅ Business Route file
 import businessRoutes from "./routes/businessRoutes.js";
 
@@ -53,6 +53,8 @@ app.get("/health", (req, res) =>
 app.get("/", (req, res) =>
   res.json({ message: "Welcome to E-Rojgar API 🚀" })
 );
+
+app.use("/api/app", appConfigRoutes);
 
 // ----- API Routes -----
 app.use("/api/user", userRoutes);
