@@ -345,48 +345,63 @@ export const getBusinessesByUserUid = async (req, res) => {
  *  - uid = postedByUid (sirf apna hi business delete kar sake)
  */
 /**
- * DELETE /api/business/:id?uid=USR-xxxx
- *  → Sirf wahi user delete kar sakta hai jisne post kiya ho
+ * DELETE business by owner UID + businessId
+ * Route: DELETE /api/business/byUser/:uid/:businessId
  */
-export const deleteBusinessByIdAndUid = async (req, res) => {
+export const deleteBusinessByUser = async (req, res) => {
   try {
-    const { id } = req.params;
-    const uid = req.query.uid;
+    const { uid, businessId } = req.params;
 
-    if (!id || !uid) {
+    if (!uid || !businessId) {
       return res.status(400).json({
         isSuccess: false,
-        error: "Business ID and uid required",
+        data: null,
+        error: "uid and businessId are required",
       });
     }
 
-    const business = await Business.findOne({ _id: id });
-
-    if (!business) {
+    // 🔍 pehle dekh lete hain ki business hai bhi ya nahi
+    const exists = await Business.findById(businessId).lean().catch(() => null);
+    if (!exists) {
       return res.status(404).json({
         isSuccess: false,
-        error: "Business not found",
+        data: null,
+        error: "Business not found with this id",
       });
     }
 
-    // Sirf owner hi delete kar sakta hai
-    if (String(business.postedByUid) !== String(uid)) {
-      return res.status(403).json({
+    // ab owner filter laga ke delete karte hain
+    const filter = {
+      _id: businessId,
+      $or: [
+        { postedByUid: uid },     // tumhare screenshot me ye field tha
+        { "poster.uid": uid },    // agar future me poster.uid use karo
+      ],
+    };
+
+    const deleted = await Business.findOneAndDelete(filter);
+
+    if (!deleted) {
+      // yaha aane ka matlab:
+      //  - ya to postedByUid me woh uid nahi h
+      //  - ya business kisi aur ka hai
+      return res.status(404).json({
         isSuccess: false,
-        error: "Not authorized | You can delete only your own business",
+        data: null,
+        error: "Not found for this UID (may not be your business)",
       });
     }
-
-    await Business.deleteOne({ _id: id });
 
     return res.json({
       isSuccess: true,
-      message: "Business deleted successfully",
+      data: deleted,
+      error: null,
     });
   } catch (err) {
-    console.error("DELETE business error:", err);
+    console.error("deleteBusinessByUser error:", err);
     return res.status(500).json({
       isSuccess: false,
+      data: null,
       error: err.message || "Server error",
     });
   }
@@ -459,7 +474,7 @@ export const updateBusinessVisibility = async (req, res) => {
     });
   }
 };
-  
+
 /**
  * Get single business by id
  */
