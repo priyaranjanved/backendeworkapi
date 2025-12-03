@@ -394,6 +394,73 @@ export const deleteBusinessByIdAndUid = async (req, res) => {
 
 
 /**
+ * Update business visibility (location.visible + optional top-level visible)
+ * PATCH /api/business/:id/visibility?postedByUid=
+ */
+export const updateBusinessVisibility = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { visible } = req.body || {};
+    const postedByUid = req.query.postedByUid || req.query.userUid || null;
+
+    if (typeof visible === "undefined") {
+      return res.status(400).json({
+        isSuccess: false,
+        data: null,
+        error: "visible is required in body",
+      });
+    }
+
+    const business = await Business.findById(id);
+    if (!business) {
+      return res.status(404).json({
+        isSuccess: false,
+        data: null,
+        error: "Business not found",
+      });
+    }
+
+    // Optional: owner check
+    if (
+      postedByUid &&
+      business.postedByUid &&
+      String(business.postedByUid) !== String(postedByUid)
+    ) {
+      return res.status(403).json({
+        isSuccess: false,
+        data: null,
+        error: "You are not allowed to modify this business",
+      });
+    }
+
+    const boolVisible = !!visible;
+
+    // top-level flag (optional)
+    business.visible = boolVisible;
+
+    // nested location.visible (ye geo search ke liye important hai)
+    if (business.location) {
+      business.location.visible = boolVisible;
+    }
+
+    await business.save();
+
+    return res.json({
+      isSuccess: true,
+      data: business,
+      error: null,
+    });
+  } catch (err) {
+    console.error("updateBusinessVisibility error:", err);
+    return res.status(500).json({
+      isSuccess: false,
+      data: null,
+      error: err.message || "Server error",
+    });
+  }
+};
+  
+/**
  * Get single business by id
  */
 export const getBusiness = async (req, res) => {

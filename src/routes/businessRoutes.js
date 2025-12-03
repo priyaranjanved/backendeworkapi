@@ -9,6 +9,7 @@ import {
   getNearbyBusinesses,
   deleteBusinessByIdAndUid  ,
   getBusinessesByUserUid,       
+   updateBusinessVisibility,
 } from "../controllers/business.controller.js";
 
 const router = express.Router();
@@ -344,4 +345,5 @@ router.get("/:id", getBusiness);
 router.get("/byUser/:uid", getBusinessesByUserUid);
   
 router.delete("/:id", deleteBusinessByIdAndUid);
+router.patch("/:id/visibility", updateBusinessVisibility);
 export default router;
