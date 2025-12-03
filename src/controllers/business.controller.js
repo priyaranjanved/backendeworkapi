@@ -99,21 +99,32 @@ const buildLocation = (body, parsedAddress) => {
  *  - postedBy / postedByUid OR from req.user
  */
 // 👇 नया simple createBusiness
+// 👇 sabse upar wali import ke baad hi hai ye
+// src/controllers/business.controller.js
+
+import Business from "../models/business.js";
+
 export const createBusiness = async (req, res) => {
   try {
     const {
       businessName,
       businessDescription,
+      address,      // string
+      images,       // array (base64/url), optional
+      postedByUid,  // optional
+      postedBy,     // optional
+
+      // location related fields
       lat,
       lng,
-      address,      // string "Buxar, Bihar, India"
-      images,       // array (base64/url), optional
-      postedByUid,  // optional, mobile se aa raha hai
-      postedBy,     // optional
-    } = req.body;
+      latitude,
+      longitude,
+      coords,
+      location,     // agar client se direct location object aaye
+    } = req.body || {};
 
     // ------- Basic validation -------
-    if (!businessName || !businessName.trim()) {
+    if (!businessName || !String(businessName).trim()) {
       return res.status(400).json({
         isSuccess: false,
         data: null,
@@ -121,7 +132,41 @@ export const createBusiness = async (req, res) => {
       });
     }
 
-    if (lat == null || lng == null) {
+    // ✅ lat/lng ko multiple jagah se pick karo
+    let latVal = lat ?? latitude;
+    let lngVal = lng ?? longitude;
+
+    // 1) agar coords "lat, lng" string me aaya ho
+    if ((latVal == null || lngVal == null) && coords) {
+      try {
+        const parts = String(coords)
+          .split(",")
+          .map((s) => parseFloat(String(s).trim()));
+        if (Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+          latVal = parts[0];
+          lngVal = parts[1];
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // 2) agar client ne direct location.coordinates bhej diya ho
+    if (
+      (latVal == null || lngVal == null) &&
+      location &&
+      Array.isArray(location.coordinates) &&
+      location.coordinates.length >= 2
+    ) {
+      // NOTE: tumhare purane data me [lng, lat] hai
+      const [c0, c1] = location.coordinates;
+      if (Number.isFinite(c0) && Number.isFinite(c1)) {
+        lngVal = c0; // index 0 = longitude
+        latVal = c1; // index 1 = latitude
+      }
+    }
+
+    if (latVal == null || lngVal == null) {
       return res.status(400).json({
         isSuccess: false,
         data: null,
@@ -129,10 +174,10 @@ export const createBusiness = async (req, res) => {
       });
     }
 
-    const latitude = Number(lat);
-    const longitude = Number(lng);
+    const latitudeNum = Number(latVal);
+    const longitudeNum = Number(lngVal);
 
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    if (!Number.isFinite(latitudeNum) || !Number.isFinite(longitudeNum)) {
       return res.status(400).json({
         isSuccess: false,
         data: null,
@@ -148,10 +193,10 @@ export const createBusiness = async (req, res) => {
         .slice(0, 5);
     }
 
-    // ------- Location object (schema ke according) -------
-    const location = {
+    // ------- Location object (EXACT screenshot jaisa) -------
+    const locationDoc = {
       type: "Point",
-      coordinates: [longitude, latitude], // [lng, lat]
+      coordinates: [longitudeNum, latitudeNum], // [lng, lat]  ✅
       address: {
         formatted: address || "",
       },
@@ -160,12 +205,16 @@ export const createBusiness = async (req, res) => {
 
     // ------- Create & save -------
     const business = await Business.create({
-      businessName: businessName.trim(),
+      businessName: String(businessName).trim(),
       businessDescription,
-      location,
+      location: locationDoc,
       images: imageList,
       postedBy: postedBy || null,
       postedByUid: postedByUid || null,
+
+      // optional top-level fields (agar tum maps me easy use karna chaho)
+      lat: latitudeNum,
+      lng: longitudeNum,
     });
 
     return res.status(201).json({
@@ -192,6 +241,8 @@ export const createBusiness = async (req, res) => {
     });
   }
 };
+  
+
 
 
 /**
