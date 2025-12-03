@@ -6,7 +6,9 @@ import {
   createBusiness,
   getBusinessesByUser,
   getBusiness,
-  getNearbyBusinesses
+  getNearbyBusinesses,
+  deleteBusinessByIdAndUid  ,
+  getBusinessesByUserUid,       
 } from "../controllers/business.controller.js";
 
 const router = express.Router();
@@ -338,6 +340,8 @@ router.get("/nearby", getNearbyBusinesses);
 
 // ✅ Get single business
 router.get("/:id", getBusiness);
-  
 
+router.get("/byUser/:uid", getBusinessesByUserUid);
+  
+router.delete("/:id", deleteBusinessByIdAndUid);
 export default router;
