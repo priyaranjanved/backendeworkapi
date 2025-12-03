@@ -7,9 +7,9 @@ import {
   getBusinessesByUser,
   getBusiness,
   getNearbyBusinesses,
-  deleteBusinessByIdAndUid  ,
   getBusinessesByUserUid,       
    updateBusinessVisibility,
+   deleteBusinessByUser
 } from "../controllers/business.controller.js";
 
 const router = express.Router();
@@ -344,6 +344,6 @@ router.get("/:id", getBusiness);
 
 router.get("/byUser/:uid", getBusinessesByUserUid);
   
-router.delete("/:id", deleteBusinessByIdAndUid);
+router.delete("/byUser/:uid/:businessId", deleteBusinessByUser);
 router.patch("/:id/visibility", updateBusinessVisibility);
 export default router;
