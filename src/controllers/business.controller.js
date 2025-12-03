@@ -98,11 +98,6 @@ const buildLocation = (body, parsedAddress) => {
  *  - images[] (files)  OR  images (URL / URLs)
  *  - postedBy / postedByUid OR from req.user
  */
-// 👇 नया simple createBusiness
-// 👇 sabse upar wali import ke baad hi hai ye
-// src/controllers/business.controller.js
-
-import Business from "../models/business.js";
 
 export const createBusiness = async (req, res) => {
   try {
@@ -241,7 +236,6 @@ export const createBusiness = async (req, res) => {
     });
   }
 };
-  
 
 
 
