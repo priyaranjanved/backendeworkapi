@@ -302,64 +302,25 @@ export const getNearbyBusinesses = async (req, res) => {
 
 /**
  * GET /api/business/byUser/:uid
- *  - :uid  = user ka UID (jaise "USR-1759942756529-7456")
- *  - ?asUid= agar requester khud hi same uid bhejta hai to hidden (visible:false) bhi milेंगे
+ *  - :uid  = postedByUid (jaise "USR-1759942756529-7456")
+ *  → is uid ne jitne business upload kiye hain, sab return karega
  */
 export const getBusinessesByUserUid = async (req, res) => {
   try {
     const { uid } = req.params;
+
     if (!uid) {
-      return res
-        .status(400)
-        .json({ isSuccess: false, data: null, error: "UID required" });
+      return res.status(400).json({
+        isSuccess: false,
+        data: null,
+        error: "UID required",
+      });
     }
 
-    // Agar tum user collection me bhi uid save karte ho to ye try karega
-    const user = await User.findOne({ uid }).lean().catch(() => null);
-
-    // Check: kya request karne wala user bhi yehi uid hai?
-    const ownerIsRequester = (() => {
-      if (req.user) {
-        const reqUid =
-          req.user.uid || (req.user._id ? String(req.user._id) : null);
-        if (reqUid && String(reqUid) === String(uid)) return true;
-      }
-      const asUid = req.query?.asUid;
-      if (asUid && String(asUid) === String(uid)) return true;
-      return false;
-    })();
-
-    // Base filter: postedBy OR postedByUid
-    const baseFilter = user
-      ? {
-          $or: [
-            { postedBy: user._id }, // agar postedBy me ObjectId store hai
-            { postedByUid: uid },   // screenshot wala field
-          ],
-        }
-      : {
-          postedByUid: uid,
-        };
-
-    // Agar khud hi dekh raha hai -> sab dikhao
-    // warna sirf wahi jahan location.visible !== false
-    const finalFilter = ownerIsRequester
-      ? baseFilter
-      : {
-          $and: [baseFilter, { "location.visible": { $ne: false } }],
-        };
-
-    let q = Business.find(finalFilter).sort({ createdAt: -1 });
-
-    // optional: agar schema me postedBy ref hai to populate
-    if (Business.schema.path("postedBy")) {
-      q = q.populate(
-        "postedBy",
-        "uid name age mobile type gender planType"
-      );
-    }
-
-    const businesses = await q.lean();
+    // sirf postedByUid se filter
+    const businesses = await Business.find({ postedByUid: uid })
+      .sort({ createdAt: -1 })
+      .lean();
 
     return res.json({
       isSuccess: true,
@@ -376,41 +337,43 @@ export const getBusinessesByUserUid = async (req, res) => {
     });
   }
 };
+
+
 /**
  * DELETE /api/business/:id?uid=USR-xxxx
  *  - id  = business _id
  *  - uid = postedByUid (sirf apna hi business delete kar sake)
  */
+/**
+ * DELETE /api/business/:id?uid=USR-xxxx
+ *  → Sirf wahi user delete kar sakta hai jisne post kiya ho
+ */
 export const deleteBusinessByIdAndUid = async (req, res) => {
   try {
     const { id } = req.params;
-    const uid =
-      req.query.uid || req.query.asUid || req.user?.uid || null;
+    const uid = req.query.uid;
 
-    if (!id) {
+    if (!id || !uid) {
       return res.status(400).json({
         isSuccess: false,
-        data: null,
-        error: "Business id is required",
+        error: "Business ID and uid required",
       });
     }
 
-    if (!uid) {
-      return res.status(400).json({
-        isSuccess: false,
-        data: null,
-        error: "uid (postedByUid) is required to delete business",
-      });
-    }
+    const business = await Business.findOne({ _id: id });
 
-    // Ensure ye business isi uid ka ho
-    const existing = await Business.findOne({ _id: id, postedByUid: uid });
-
-    if (!existing) {
+    if (!business) {
       return res.status(404).json({
         isSuccess: false,
-        data: null,
-        error: "Business not found for this uid",
+        error: "Business not found",
+      });
+    }
+
+    // Sirf owner hi delete kar sakta hai
+    if (String(business.postedByUid) !== String(uid)) {
+      return res.status(403).json({
+        isSuccess: false,
+        error: "Not authorized | You can delete only your own business",
       });
     }
 
@@ -418,18 +381,17 @@ export const deleteBusinessByIdAndUid = async (req, res) => {
 
     return res.json({
       isSuccess: true,
-      data: { _id: id },
-      error: null,
+      message: "Business deleted successfully",
     });
   } catch (err) {
-    console.error("Delete business error:", err);
+    console.error("DELETE business error:", err);
     return res.status(500).json({
       isSuccess: false,
-      data: null,
       error: err.message || "Server error",
     });
   }
 };
+
 
 /**
  * Get single business by id
