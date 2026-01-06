@@ -20,6 +20,9 @@ import appConfigRoutes from "./routes/appConfig.routes.js";
 // ✅ Business Route file
 import businessRoutes from "./routes/businessRoutes.js";
 
+// ✅ ADD THIS (KYC routes)
+import kycUserRoutes from "./routes/kycUser.routes.js";
+
 const app = express();
 
 /* 🔹 GLOBAL REQUEST LOGGER
@@ -74,12 +77,20 @@ app.use("/uploads", express.static(path.join(__dirname, "src", "uploads")));
 // ----- Engage -----
 app.use("/api/engage", engageRoutes);
 
+// 2) serve uploads so facePhoto.url works
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
+// ✅ ADD THIS (mount KYC routes)
+app.use("/api/kyc", kycUserRoutes);
+
 // ----- 404 -----
 app.use((req, res) => {
   return res
     .status(404)
     .json({ isSuccess: false, error: "NOT_FOUND" });
 });
+
+// (आपके original file में ये logger duplicate है, मैंने वैसा ही रखा)
 app.use((req, res, next) => {
   console.log(">>>", req.method, req.originalUrl, "from", req.ip);
   next();
