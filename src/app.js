@@ -4,6 +4,7 @@ import morgan from "morgan";
 import cors from "cors";
 import helmet from "helmet";
 import path from "path";
+import fs from "fs";
 
 import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
@@ -17,18 +18,18 @@ import jobRoutes from "./routes/job.routes.js";
 import engageRoutes from "./routes/engage.routes.js";
 import hireRoutes from "./routes/hireRoutes.js";
 import appConfigRoutes from "./routes/appConfig.routes.js";
-// ✅ Business Route file
 import businessRoutes from "./routes/businessRoutes.js";
 
-// ✅ ADD THIS (KYC routes)
+// ✅ KYC routes
 import kycUserRoutes from "./routes/kycUser.routes.js";
 
 const app = express();
 
-/* 🔹 GLOBAL REQUEST LOGGER
-   -> sabse upar rakha hai, taaki har request dikh jaaye
-*/
-app.use((req, res, next) => {
+// ✅ VERY IMPORTANT for Render / Proxy (so req.protocol becomes https)
+app.set("trust proxy", 1);
+
+/* 🔹 GLOBAL REQUEST LOGGER (ONLY ONCE) */
+app.use((req, _res, next) => {
   console.log(">>>", req.method, req.originalUrl, "from", req.ip);
   next();
 });
@@ -42,58 +43,44 @@ const allow = (process.env.CORS_ORIGINS || "")
 app.use(cors({ origin: allow.length ? allow : true, credentials: true }));
 app.use(helmet());
 
-// 🔹 Body size limit badha diya (images ke liye)
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 app.use(morgan("dev"));
 
 // ----- Health check -----
-app.get("/health", (req, res) =>
-  res.json({ ok: true, uptime: process.uptime() })
-);
+app.get("/health", (_req, res) => res.json({ ok: true, uptime: process.uptime() }));
+app.get("/", (_req, res) => res.json({ message: "Welcome to E-Rojgar API 🚀" }));
 
-app.get("/", (req, res) =>
-  res.json({ message: "Welcome to E-Rojgar API 🚀" })
-);
+// ✅ uploads folder (same as multer: process.cwd()/uploads)
+const uploadsDir = process.env.UPLOADS_DIR
+  ? path.resolve(process.env.UPLOADS_DIR) // use persistent disk if provided
+  : path.join(process.cwd(), "uploads");
 
-app.use("/api/app", appConfigRoutes);
+// ✅ ensure folder exists
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+// ✅ Serve uploads (KEEP THIS BEFORE 404)
+app.use("/uploads", express.static(uploadsDir));
 
 // ----- API Routes -----
+app.use("/api/app", appConfigRoutes);
+
 app.use("/api/user", userRoutes);
 app.use("/api/works", workRoutes);
 app.use("/api/jobs", jobRoutes);
 app.use("/api/aadhaar", aadhaarRoutes);
 
-// ✅ Business API
 app.use("/api/business", businessRoutes);
-
-// Hire routes
 app.use("/api", hireRoutes);
-
-// ----- Serve uploads -----
-app.use("/uploads", express.static(path.join(__dirname, "src", "uploads")));
-
-// ----- Engage -----
 app.use("/api/engage", engageRoutes);
 
-// 2) serve uploads so facePhoto.url works
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
-
-// ✅ ADD THIS (mount KYC routes)
+// ✅ mount KYC routes
 app.use("/api/kyc", kycUserRoutes);
 
-// ----- 404 -----
+// ----- 404 (LAST) -----
 app.use((req, res) => {
-  return res
-    .status(404)
-    .json({ isSuccess: false, error: "NOT_FOUND" });
-});
-
-// (आपके original file में ये logger duplicate है, मैंने वैसा ही रखा)
-app.use((req, res, next) => {
-  console.log(">>>", req.method, req.originalUrl, "from", req.ip);
-  next();
+  return res.status(404).json({ isSuccess: false, error: "NOT_FOUND" });
 });
 
 export default app;

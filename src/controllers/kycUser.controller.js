@@ -59,7 +59,9 @@ export const registerKycUser = async (req, res) => {
     }
 
     const uid = makeUid();
-    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
+    // const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
+    const baseUrl = process.env.BASE_URL || `https://${req.get("host")}`;
+
     const photoUrl = `${baseUrl}/uploads/${req.file.filename}`;
 
     const user = await KycCardUser.create({
@@ -278,7 +280,9 @@ export const updateFacePhoto = async (req, res) => {
     if (!uid) return res.status(400).json({ ok: false, error: "uid required" });
     if (!req.file) return res.status(400).json({ ok: false, error: "photo file required (field: photo)" });
 
-    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
+    // const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
+    const baseUrl = process.env.BASE_URL || `https://${req.get("host")}`;
+
     const photoUrl = `${baseUrl}/uploads/${req.file.filename}`;
 
     const user = await KycCardUser.findOneAndUpdate(
