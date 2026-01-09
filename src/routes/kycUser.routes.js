@@ -8,6 +8,7 @@ import {
   getKycUser,
   updatePlanType,
   updateFacePhoto,
+  createKycUser, getKycUserByUid, upsertKycUserByUid 
 } from "../controllers/kycUser.controller.js";
 
 const router = express.Router();
@@ -42,5 +43,20 @@ router.post("/register", upload.single("photo"), registerKycUser);
 router.get("/user", getKycUser);
 router.patch("/plan", express.json(), updatePlanType);
 router.patch("/photo", upload.single("photo"), updateFacePhoto);
+
+/** -------------------------
+ * ✅ NEW UID Routes
+ * base: /api/kyc
+ * ------------------------*/
+
+// ✅ (Optional) Create KYC using JSON body (uid required)
+router.post("/user", createKycUser);
+
+// ✅ Get by UID
+router.get("/user/uid/:uid", getKycUserByUid);
+
+// ✅ Upsert by UID (create or update)
+router.post("/user/uid/:uid", upsertKycUserByUid);
+
 
 export default router;

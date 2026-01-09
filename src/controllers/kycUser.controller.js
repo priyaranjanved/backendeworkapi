@@ -158,6 +158,118 @@ export const updatePlanType = async (req, res) => {
   }
 };
 
+
+/**
+ * POST /kyc
+ * Create new KYC user (uid required)
+ */
+export const createKycUser = async (req, res) => {
+  try {
+    const { uid, fullName, mobile, dob, age, gender, planType, facePhoto } = req.body;
+
+    if (!uid) return res.status(400).json({ message: "uid is required" });
+    if (!fullName) return res.status(400).json({ message: "fullName is required" });
+    if (!mobile) return res.status(400).json({ message: "mobile is required" });
+    if (!dob) return res.status(400).json({ message: "dob is required" });
+    if (age === undefined || age === null) return res.status(400).json({ message: "age is required" });
+    if (!gender) return res.status(400).json({ message: "gender is required" });
+    if (!facePhoto) return res.status(400).json({ message: "facePhoto is required" });
+
+    // Prevent duplicate by uid or mobile
+    const existing = await KycCardUser.findOne({ $or: [{ uid }, { mobile }] });
+    if (existing) {
+      return res.status(409).json({
+        message: "User already exists with same uid or mobile",
+        data: existing,
+      });
+    }
+
+    const doc = await KycCardUser.create({
+      uid,
+      fullName,
+      mobile,
+      dob: new Date(dob),
+      age,
+      gender,
+      planType: planType || "Basic",
+      facePhoto,
+    });
+
+    return res.status(201).json({ message: "KYC user created", data: doc });
+  } catch (err) {
+    // Handle duplicate key errors nicely
+    if (err?.code === 11000) {
+      return res.status(409).json({ message: "Duplicate uid/mobile", error: err.keyValue });
+    }
+    return res.status(500).json({ message: "Server error", error: err?.message || err });
+  }
+};
+
+/**
+ * GET /kyc/uid/:uid
+ * Fetch KYC user by uid
+ */
+export const getKycUserByUid = async (req, res) => {
+  try {
+    const raw = req.params.uid ?? "";
+    let decoded = raw;
+    try { decoded = decodeURIComponent(raw); } catch {}
+
+    const cleaned = String(decoded)
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+      .trim();
+
+    if (!cleaned) {
+      return res.status(400).json({ isSuccess: false, error: "MISSING_UID" });
+    }
+
+    const user = await KycCardUser.findOne({ uid: cleaned }).lean();
+
+    if (!user) {
+      return res.status(404).json({ isSuccess: false, error: "NOT_FOUND" });
+    }
+
+    return res.status(200).json({ isSuccess: true, data: user });
+  } catch (err) {
+    console.error("getKycUserByUid error:", err);
+    return res.status(500).json({ isSuccess: false, error: "SERVER_ERROR" });
+  }
+};
+
+
+
+/**
+ * POST /kyc/uid/:uid
+ * Upsert by uid (if exists -> update, else -> create)
+ * Useful when client always sends uid and you want single endpoint.
+ */
+export const upsertKycUserByUid = async (req, res) => {
+  try {
+    const { uid } = req.params;
+
+    if (!uid) return res.status(400).json({ message: "uid param is required" });
+
+    const payload = { ...req.body, uid };
+
+    // Normalize dob if provided
+    if (payload.dob) payload.dob = new Date(payload.dob);
+
+    const updated = await KycCardUser.findOneAndUpdate(
+      { uid },
+      { $set: payload },
+      { new: true, upsert: true, runValidators: true }
+    );
+
+    return res.status(200).json({ message: "KYC user upserted by uid", data: updated });
+  } catch (err) {
+    if (err?.code === 11000) {
+      return res.status(409).json({ message: "Duplicate uid/mobile", error: err.keyValue });
+    }
+    return res.status(500).json({ message: "Server error", error: err?.message || err });
+  }
+};
+
+
 // ✅ UPDATE PHOTO
 export const updateFacePhoto = async (req, res) => {
   try {
