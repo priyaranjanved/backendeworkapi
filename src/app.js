@@ -62,6 +62,20 @@ if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 // ✅ Serve uploads (KEEP THIS BEFORE 404)
 app.use("/uploads", express.static(uploadsDir));
+app.get("/debug-uploads", (req, res) => {
+  try {
+    const files = fs.existsSync(uploadsDir) ? fs.readdirSync(uploadsDir) : [];
+    res.json({
+      uploadsDir,
+      exists: fs.existsSync(uploadsDir),
+      count: files.length,
+      files: files.slice(0, 50),
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 
 // ----- API Routes -----
 app.use("/api/app", appConfigRoutes);

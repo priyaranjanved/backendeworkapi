@@ -14,8 +14,13 @@ import {
 const router = express.Router();
 
 /** ✅ uploads folder (project root /uploads) */
-const uploadsDir = path.join(process.cwd(), "uploads");
+/** ✅ uploads folder (MUST MATCH app.js uploadsDir) */
+const uploadsDir = process.env.UPLOADS_DIR
+  ? path.resolve(process.env.UPLOADS_DIR)
+  : path.join(process.cwd(), "uploads");
+
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
 
 /** ✅ multer config */
 const storage = multer.diskStorage({
