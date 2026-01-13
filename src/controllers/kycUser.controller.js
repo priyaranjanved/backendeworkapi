@@ -1,4 +1,13 @@
 import KycCardUser from "../models/KycCardUser.js";
+import sharp from "sharp";
+import path from "path";
+import fs from "fs";
+
+const uploadsDir = process.env.UPLOADS_DIR
+  ? path.resolve(process.env.UPLOADS_DIR)
+  : path.join(process.cwd(), "uploads");
+
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 function makeUid() {
   return `USR-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -8,6 +17,33 @@ function parseDob(dobStr) {
   const d = new Date(dobStr);
   if (Number.isNaN(d.getTime())) return null;
   return d;
+}
+
+/**
+ * ✅ Save compressed face photo (target 1–3MB practical)
+ * - resize max 1600px
+ * - quality 88 (mostly)
+ * - if >3MB then quality 82
+ */
+async function saveCompressedFace(buffer) {
+  const filename = `face_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}.jpg`;
+  const outPath = path.join(uploadsDir, filename);
+
+  const base = sharp(buffer)
+    .rotate()
+    .resize(1600, 1600, { fit: "inside", withoutEnlargement: true });
+
+  // first try
+  await base.jpeg({ quality: 88, mozjpeg: true }).toFile(outPath);
+  let size = fs.statSync(outPath).size;
+
+  // if too big, compress more
+  if (size > 3 * 1024 * 1024) {
+    await base.jpeg({ quality: 82, mozjpeg: true }).toFile(outPath);
+    size = fs.statSync(outPath).size;
+  }
+
+  return { filename, size };
 }
 
 // ✅ REGISTER
@@ -59,10 +95,11 @@ export const registerKycUser = async (req, res) => {
     }
 
     const uid = makeUid();
-    // const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
     const baseUrl = process.env.BASE_URL || `https://${req.get("host")}`;
 
-    const photoUrl = `${baseUrl}/uploads/${req.file.filename}`;
+    // ✅ COMPRESS + SAVE
+    const { filename, size } = await saveCompressedFace(req.file.buffer);
+    const photoUrl = `${baseUrl}/uploads/${filename}`;
 
     const user = await KycCardUser.create({
       uid,
@@ -73,9 +110,9 @@ export const registerKycUser = async (req, res) => {
       gender,
       planType: planType && ["Basic", "Premium"].includes(planType) ? planType : "Basic",
       facePhoto: {
-        fileName: req.file.filename,
-        mimeType: req.file.mimetype,
-        size: req.file.size,
+        fileName: filename,
+        mimeType: "image/jpeg",
+        size: size,
         url: photoUrl,
       },
     });
@@ -160,7 +197,6 @@ export const updatePlanType = async (req, res) => {
   }
 };
 
-
 /**
  * POST /kyc
  * Create new KYC user (uid required)
@@ -199,7 +235,6 @@ export const createKycUser = async (req, res) => {
 
     return res.status(201).json({ message: "KYC user created", data: doc });
   } catch (err) {
-    // Handle duplicate key errors nicely
     if (err?.code === 11000) {
       return res.status(409).json({ message: "Duplicate uid/mobile", error: err.keyValue });
     }
@@ -238,12 +273,9 @@ export const getKycUserByUid = async (req, res) => {
   }
 };
 
-
-
 /**
  * POST /kyc/uid/:uid
  * Upsert by uid (if exists -> update, else -> create)
- * Useful when client always sends uid and you want single endpoint.
  */
 export const upsertKycUserByUid = async (req, res) => {
   try {
@@ -252,8 +284,6 @@ export const upsertKycUserByUid = async (req, res) => {
     if (!uid) return res.status(400).json({ message: "uid param is required" });
 
     const payload = { ...req.body, uid };
-
-    // Normalize dob if provided
     if (payload.dob) payload.dob = new Date(payload.dob);
 
     const updated = await KycCardUser.findOneAndUpdate(
@@ -271,8 +301,7 @@ export const upsertKycUserByUid = async (req, res) => {
   }
 };
 
-
-// ✅ UPDATE PHOTO
+// ✅ UPDATE PHOTO (also compressed)
 export const updateFacePhoto = async (req, res) => {
   try {
     const { uid } = req.body;
@@ -280,19 +309,20 @@ export const updateFacePhoto = async (req, res) => {
     if (!uid) return res.status(400).json({ ok: false, error: "uid required" });
     if (!req.file) return res.status(400).json({ ok: false, error: "photo file required (field: photo)" });
 
-    // const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
     const baseUrl = process.env.BASE_URL || `https://${req.get("host")}`;
 
-    const photoUrl = `${baseUrl}/uploads/${req.file.filename}`;
+    // ✅ COMPRESS + SAVE
+    const { filename, size } = await saveCompressedFace(req.file.buffer);
+    const photoUrl = `${baseUrl}/uploads/${filename}`;
 
     const user = await KycCardUser.findOneAndUpdate(
       { uid },
       {
         $set: {
           facePhoto: {
-            fileName: req.file.filename,
-            mimeType: req.file.mimetype,
-            size: req.file.size,
+            fileName: filename,
+            mimeType: "image/jpeg",
+            size: size,
             url: photoUrl,
           },
         },

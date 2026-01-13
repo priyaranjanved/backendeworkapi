@@ -8,12 +8,13 @@ import {
   getKycUser,
   updatePlanType,
   updateFacePhoto,
-  createKycUser, getKycUserByUid, upsertKycUserByUid 
+  createKycUser,
+  getKycUserByUid,
+  upsertKycUserByUid,
 } from "../controllers/kycUser.controller.js";
 
 const router = express.Router();
 
-/** ✅ uploads folder (project root /uploads) */
 /** ✅ uploads folder (MUST MATCH app.js uploadsDir) */
 const uploadsDir = process.env.UPLOADS_DIR
   ? path.resolve(process.env.UPLOADS_DIR)
@@ -21,26 +22,19 @@ const uploadsDir = process.env.UPLOADS_DIR
 
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-
-/** ✅ multer config */
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadsDir),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname || "").toLowerCase() || ".jpg";
-    const safe = `face_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}${ext}`;
-    cb(null, safe);
-  },
-});
-
 function fileFilter(_req, file, cb) {
-  if (!file.mimetype.startsWith("image/")) return cb(new Error("Only image files allowed"));
+  if (!file.mimetype?.startsWith("image/")) return cb(new Error("Only image files allowed"));
   cb(null, true);
 }
 
+/** ✅ multer config (UPDATED)
+ * - memoryStorage: file RAM me aayegi => controller sharp se compress karega
+ * - limits: input 10MB (camera raw bada aa sakta hai, output compress hoga)
+ */
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB input max
 });
 
 // ✅ routes
@@ -62,6 +56,5 @@ router.get("/user/uid/:uid", getKycUserByUid);
 
 // ✅ Upsert by UID (create or update)
 router.post("/user/uid/:uid", upsertKycUserByUid);
-
 
 export default router;

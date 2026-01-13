@@ -52,9 +52,9 @@ app.use(morgan("dev"));
 app.get("/health", (_req, res) => res.json({ ok: true, uptime: process.uptime() }));
 app.get("/", (_req, res) => res.json({ message: "Welcome to E-Rojgar API 🚀" }));
 
-// ✅ uploads folder (same as multer: process.cwd()/uploads)
+// ✅ uploads folder (same as multer/controller: process.cwd()/uploads)
 const uploadsDir = process.env.UPLOADS_DIR
-  ? path.resolve(process.env.UPLOADS_DIR) // use persistent disk if provided
+  ? path.resolve(process.env.UPLOADS_DIR)
   : path.join(process.cwd(), "uploads");
 
 // ✅ ensure folder exists
@@ -62,6 +62,7 @@ if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 // ✅ Serve uploads (KEEP THIS BEFORE 404)
 app.use("/uploads", express.static(uploadsDir));
+
 app.get("/debug-uploads", (req, res) => {
   try {
     const files = fs.existsSync(uploadsDir) ? fs.readdirSync(uploadsDir) : [];
@@ -75,7 +76,6 @@ app.get("/debug-uploads", (req, res) => {
     res.status(500).json({ error: String(e) });
   }
 });
-
 
 // ----- API Routes -----
 app.use("/api/app", appConfigRoutes);
