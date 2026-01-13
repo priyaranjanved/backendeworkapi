@@ -43,6 +43,7 @@ const allow = (process.env.CORS_ORIGINS || "")
 app.use(cors({ origin: allow.length ? allow : true, credentials: true }));
 app.use(helmet());
 
+// ✅ keep same limits (your current)
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
@@ -52,9 +53,9 @@ app.use(morgan("dev"));
 app.get("/health", (_req, res) => res.json({ ok: true, uptime: process.uptime() }));
 app.get("/", (_req, res) => res.json({ message: "Welcome to E-Rojgar API 🚀" }));
 
-// ✅ uploads folder (same as multer/controller: process.cwd()/uploads)
+// ✅ uploads folder (same as controller/routes: process.cwd()/uploads)
 const uploadsDir = process.env.UPLOADS_DIR
-  ? path.resolve(process.env.UPLOADS_DIR)
+  ? path.resolve(process.env.UPLOADS_DIR) // use persistent disk if provided
   : path.join(process.cwd(), "uploads");
 
 // ✅ ensure folder exists
@@ -63,7 +64,8 @@ if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 // ✅ Serve uploads (KEEP THIS BEFORE 404)
 app.use("/uploads", express.static(uploadsDir));
 
-app.get("/debug-uploads", (req, res) => {
+// ✅ Debug uploads
+app.get("/debug-uploads", (_req, res) => {
   try {
     const files = fs.existsSync(uploadsDir) ? fs.readdirSync(uploadsDir) : [];
     res.json({

@@ -20,10 +20,14 @@ function parseDob(dobStr) {
 }
 
 /**
- * ✅ Save compressed face photo (target 1–3MB practical)
+ * ✅ Save compressed face photo + also return base64
+ * Target: practical 1–3MB
  * - resize max 1600px
  * - quality 88 (mostly)
  * - if >3MB then quality 82
+ *
+ * Returns:
+ * { filename, size, data }  // data = data:image/jpeg;base64,...
  */
 async function saveCompressedFace(buffer) {
   const filename = `face_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}.jpg`;
@@ -33,17 +37,21 @@ async function saveCompressedFace(buffer) {
     .rotate()
     .resize(1600, 1600, { fit: "inside", withoutEnlargement: true });
 
-  // first try
+  // 1) first try
   await base.jpeg({ quality: 88, mozjpeg: true }).toFile(outPath);
-  let size = fs.statSync(outPath).size;
+  let outBuffer = fs.readFileSync(outPath);
+  let size = outBuffer.length;
 
-  // if too big, compress more
+  // 2) if too big, compress more
   if (size > 3 * 1024 * 1024) {
     await base.jpeg({ quality: 82, mozjpeg: true }).toFile(outPath);
-    size = fs.statSync(outPath).size;
+    outBuffer = fs.readFileSync(outPath);
+    size = outBuffer.length;
   }
 
-  return { filename, size };
+  const data = `data:image/jpeg;base64,${outBuffer.toString("base64")}`;
+
+  return { filename, size, data };
 }
 
 // ✅ REGISTER
@@ -97,8 +105,8 @@ export const registerKycUser = async (req, res) => {
     const uid = makeUid();
     const baseUrl = process.env.BASE_URL || `https://${req.get("host")}`;
 
-    // ✅ COMPRESS + SAVE
-    const { filename, size } = await saveCompressedFace(req.file.buffer);
+    // ✅ COMPRESS + SAVE + BASE64
+    const { filename, size, data } = await saveCompressedFace(req.file.buffer);
     const photoUrl = `${baseUrl}/uploads/${filename}`;
 
     const user = await KycCardUser.create({
@@ -113,7 +121,8 @@ export const registerKycUser = async (req, res) => {
         fileName: filename,
         mimeType: "image/jpeg",
         size: size,
-        url: photoUrl,
+        url: photoUrl, // ✅ keep url as you want
+        data: data,    // ✅ NEW: permanent base64 (business style)
       },
     });
 
@@ -130,6 +139,7 @@ export const registerKycUser = async (req, res) => {
         gender: user.gender,
         planType: user.planType,
         facePhotoUrl: user.facePhoto.url,
+        facePhotoData: user.facePhoto.data, // optional (debug)
       },
     });
   } catch (err) {
@@ -164,6 +174,7 @@ export const getKycUser = async (req, res) => {
         gender: user.gender,
         planType: user.planType,
         facePhotoUrl: user.facePhoto?.url || null,
+        facePhotoData: user.facePhoto?.data || null, // ✅ NEW (optional)
       },
     });
   } catch (err) {
@@ -301,7 +312,7 @@ export const upsertKycUserByUid = async (req, res) => {
   }
 };
 
-// ✅ UPDATE PHOTO (also compressed)
+// ✅ UPDATE PHOTO (compressed + base64)
 export const updateFacePhoto = async (req, res) => {
   try {
     const { uid } = req.body;
@@ -311,8 +322,8 @@ export const updateFacePhoto = async (req, res) => {
 
     const baseUrl = process.env.BASE_URL || `https://${req.get("host")}`;
 
-    // ✅ COMPRESS + SAVE
-    const { filename, size } = await saveCompressedFace(req.file.buffer);
+    // ✅ COMPRESS + SAVE + BASE64
+    const { filename, size, data } = await saveCompressedFace(req.file.buffer);
     const photoUrl = `${baseUrl}/uploads/${filename}`;
 
     const user = await KycCardUser.findOneAndUpdate(
@@ -324,6 +335,7 @@ export const updateFacePhoto = async (req, res) => {
             mimeType: "image/jpeg",
             size: size,
             url: photoUrl,
+            data: data,
           },
         },
       },
@@ -332,7 +344,12 @@ export const updateFacePhoto = async (req, res) => {
 
     if (!user) return res.status(404).json({ ok: false, error: "user not found" });
 
-    return res.json({ ok: true, uid: user.uid, facePhotoUrl: user.facePhoto.url });
+    return res.json({
+      ok: true,
+      uid: user.uid,
+      facePhotoUrl: user.facePhoto.url,
+      facePhotoData: user.facePhoto.data, // optional (debug)
+    });
   } catch (err) {
     console.error("updateFacePhoto error:", err);
     return res.status(500).json({ ok: false, error: "server error" });
