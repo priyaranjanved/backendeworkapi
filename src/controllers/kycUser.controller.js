@@ -261,66 +261,32 @@ export const createKycUser = async (req, res) => {
  * GET /user/uid/:uid
  * Fetch KYC user by uid (supports string uid, numeric uid, ObjectId, aadhaar)
  */
+// controllers/kyc.controller.js
+
+
 export const getKycUserByUid = async (req, res) => {
   try {
     const raw = req.params.uid ?? "";
-    let decoded;
-    try { decoded = decodeURIComponent(raw); } catch { decoded = raw; }
-
-    const cleaned = String(decoded || "")
+    let decoded = raw;
+    try { decoded = decodeURIComponent(raw); } catch (e) {}
+    const cleaned = (decoded || "")
       .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
       .trim();
 
-    console.log("✅ /api/kyc/user/uid/:uid =", { raw, decoded, cleaned });
+    console.log("[getKycUserByUid] cleaned uid =", cleaned); // ✅ debug
 
     if (!cleaned) {
       return res.status(400).json({ isSuccess: false, error: "MISSING_UID" });
     }
 
-    const isDigits = /^\d+$/.test(cleaned);
-    const maybeNum = isDigits ? Number(cleaned) : null;
+    // ✅ ONLY KYC collection
+    const user = await KycUser.findOne({ uid: cleaned }).lean();
 
-    let user = null;
+    console.log("[getKycUserByUid] found =", !!user); // ✅ debug
 
-    // 1) UID match (string or number)
-    user = await User.findOne({
-      $or: [
-        { uid: cleaned },
-        ...(isDigits ? [{ uid: maybeNum }] : []),
-      ],
-    }).lean();
-    if (user) return res.json({ isSuccess: true, data: user });
+    if (!user) return res.status(404).json({ isSuccess: false, error: "NOT_FOUND" });
 
-    // 2) ObjectId fallback
-    if (/^[0-9a-fA-F]{24}$/.test(cleaned)) {
-      user = await User.findById(cleaned).lean();
-      if (user) return res.json({ isSuccess: true, data: user });
-    }
-
-    // 3) Aadhaar fallback
-    if (/^\d{10,12}$/.test(cleaned)) {
-      user = await User.findOne({
-        $or: [
-          { aadhaar: cleaned },
-          ...(isDigits ? [{ aadhaar: maybeNum }] : []),
-        ],
-      }).lean();
-      if (user) return res.json({ isSuccess: true, data: user });
-    }
-
-    // 4) Mobile fallback (very common in your app flow)
-    if (/^\d{10}$/.test(cleaned)) {
-      user = await User.findOne({
-        $or: [
-          { mobile: cleaned },
-          { phone: cleaned },
-          ...(isDigits ? [{ mobile: maybeNum }, { phone: maybeNum }] : []),
-        ],
-      }).lean();
-      if (user) return res.json({ isSuccess: true, data: user });
-    }
-
-    return res.status(404).json({ isSuccess: false, error: "NOT_FOUND", cleaned });
+    return res.json({ isSuccess: true, data: user });
   } catch (err) {
     console.error("[kyc] getKycUserByUid error:", err);
     return res.status(500).json({ isSuccess: false, error: "USER_ERROR" });
