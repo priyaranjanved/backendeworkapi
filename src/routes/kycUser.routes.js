@@ -12,6 +12,7 @@ import {
   createKycUser,
   getKycUserByUid,
   upsertKycUserByUid,
+  getKycUserByUidProfile
 } from "../controllers/kycUser.controller.js";
 
 const router = express.Router();
@@ -57,6 +58,8 @@ router.post("/user", express.json(), createKycUser);
 
 // ✅ Get by UID
 router.get("/user/uid/:uid", getKycUserByUid);
+// ✅ Get by UID
+router.get("/user/uidprofile/:uid", getKycUserByUidProfile);
 
 // ✅ Upsert by UID (create or update)
 router.post("/user/uid/:uid", express.json(), upsertKycUserByUid);

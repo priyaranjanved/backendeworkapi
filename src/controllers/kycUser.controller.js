@@ -257,14 +257,36 @@ export const createKycUser = async (req, res) => {
  * GET /kyc/uid/:uid
  * Fetch KYC user by uid
  */
-/**
- * GET /user/uid/:uid
- * Fetch KYC user by uid (supports string uid, numeric uid, ObjectId, aadhaar)
- */
-// controllers/kyc.controller.js
-
-
 export const getKycUserByUid = async (req, res) => {
+  try {
+    const raw = req.params.uid ?? "";
+    let decoded = raw;
+    try { decoded = decodeURIComponent(raw); } catch {}
+
+    const cleaned = String(decoded)
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+      .trim();
+
+    if (!cleaned) {
+      return res.status(400).json({ isSuccess: false, error: "MISSING_UID" });
+    }
+
+    const user = await KycCardUser.findOne({ uid: cleaned }).lean();
+
+    if (!user) {
+      return res.status(404).json({ isSuccess: false, error: "NOT_FOUND" });
+    }
+
+    return res.status(200).json({ isSuccess: true, data: user });
+  } catch (err) {
+    console.error("getKycUserByUid error:", err);
+    return res.status(500).json({ isSuccess: false, error: "SERVER_ERROR" });
+  }
+};
+
+
+
+export const getKycUserByUidProfile = async (req, res) => {
   try {
     const raw = req.params.uid ?? "";
     let decoded = raw;
@@ -292,7 +314,6 @@ export const getKycUserByUid = async (req, res) => {
     return res.status(500).json({ isSuccess: false, error: "USER_ERROR" });
   }
 };
-
 
 /**
  * POST /kyc/uid/:uid
