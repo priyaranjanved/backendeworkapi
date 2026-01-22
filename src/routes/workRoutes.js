@@ -1,7 +1,8 @@
 // src/routes/workRoutes.js
 import express from "express";
 import Work from "../models/work.js";
-import User from "../models/user.js";
+// ❌ OLD: import User from "../models/user.js";
+import KycCardUser from "../models/KycCardUser.js"; // ✅ NEW (as per your screenshot)
 import Engage from "../models/engage.model.js";
 import mongoose from "mongoose";
 const router = express.Router();
@@ -99,7 +100,7 @@ const buildPosterSnapshot = (user, fallbackUid) => {
   const u = user || {};
   return {
     uid: u.uid || fallbackUid || (u._id ? String(u._id) : ""),
-    name: u.name || "",
+    name: u.name || u.fullName || "",
     age: u.age != null ? Number(u.age) : undefined,
     mobile: u.mobile || "",
     type: u.type || u.role || "",
@@ -133,9 +134,6 @@ const isOwner = (req, workDoc) => {
 };
 
 /**
- * Normalizer: convert a work doc (or plain object) so it contains top-level `visible`
- */
-/**
  * Normalizer: convert a work doc (or plain object) so it contains top-level `visible`.
  * Also include review aggregates & recentReviews only if reviews exist.
  */
@@ -150,9 +148,12 @@ const normalizeWork = (w) => {
     const reviewsArr = Array.isArray(clone.reviews) ? clone.reviews.filter((r) => r && r.visible) : [];
     if (reviewsArr.length > 0) {
       clone.reviewCount = typeof clone.reviewCount === "number" ? clone.reviewCount : reviewsArr.length;
-      clone.avgRating = typeof clone.avgRating === "number"
-        ? clone.avgRating
-        : Math.round((reviewsArr.reduce((s, r) => s + (Number(r.rating) || 0), 0) / Math.max(1, reviewsArr.length)) * 100) / 100;
+      clone.avgRating =
+        typeof clone.avgRating === "number"
+          ? clone.avgRating
+          : Math.round(
+              (reviewsArr.reduce((s, r) => s + (Number(r.rating) || 0), 0) / Math.max(1, reviewsArr.length)) * 100
+            ) / 100;
 
       const recent = reviewsArr.slice(-3).reverse(); // newest first
       clone.recentReviews = recent.map((r) => ({
@@ -169,22 +170,17 @@ const normalizeWork = (w) => {
       delete clone.recentReviews;
     }
   } catch (e) {
-    // ignore – do not break normal flow
+    // ignore
   }
 
   return clone;
 };
 
-
 /**
  * POST /api/works/upload
- * Accepts: { workName|name, coords, description, posterUid?, location?: { address } , address? }
- * - Supports legacy coords string or object, and legacy address string or structured object.
- * - Normalizes address with normalizeAddress() and saves it into location.address (object or null).
  */
 router.post("/upload", async (req, res) => {
   try {
-    // 🆕 1) SABSE PEHLE: check karo ki request bilkul khaali to nahi
     const { workName, name, description = "", coords, posterUid } = req.body || {};
 
     const noMainFields =
@@ -197,8 +193,6 @@ router.post("/upload", async (req, res) => {
     const noFiles = !req.files || req.files.length === 0;
 
     if (noMainFields && noFiles) {
-      // 👉 Ye woh “background / extra” call hai jisme kuch bhi data nahi aa raha.
-      //    Isko hum simply success treat kar denge, taaki MISSING_PARAMS popup na aaye.
       return res.status(200).json({
         isSuccess: true,
         data: null,
@@ -206,14 +200,10 @@ router.post("/upload", async (req, res) => {
       });
     }
 
-    // ⬇️ 2) Yahan se neeche **tumhara purana logic same rakha hai** 👇
-
     const finalName = workName || name;
 
     if (!finalName || !coords || !posterUid) {
-      return res
-        .status(400)
-        .json({ isSuccess: false, error: "MISSING_PARAMS" });
+      return res.status(400).json({ isSuccess: false, error: "MISSING_PARAMS" });
     }
 
     // --- parse coords into GeoJSON [lng, lat]
@@ -231,11 +221,7 @@ router.post("/upload", async (req, res) => {
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
         lngLat = [lng, lat];
       }
-    } else if (
-      coords &&
-      typeof coords === "object" &&
-      (coords.lat !== undefined || coords.lng !== undefined)
-    ) {
+    } else if (coords && typeof coords === "object" && (coords.lat !== undefined || coords.lng !== undefined)) {
       const lat = Number(coords.lat);
       const lng = Number(coords.lng);
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
@@ -244,9 +230,7 @@ router.post("/upload", async (req, res) => {
     }
 
     if (!lngLat) {
-      return res
-        .status(400)
-        .json({ isSuccess: false, error: "INVALID_COORDS" });
+      return res.status(400).json({ isSuccess: false, error: "INVALID_COORDS" });
     }
 
     // --- find latest existing work for this posterUid
@@ -259,10 +243,7 @@ router.post("/upload", async (req, res) => {
     // --- decide visible for new work (inherit)
     let decidedVisible = true;
     if (latest) {
-      if (
-        latest.location &&
-        typeof latest.location.visible !== "undefined"
-      ) {
+      if (latest.location && typeof latest.location.visible !== "undefined") {
         decidedVisible = !!latest.location.visible;
       } else if (typeof latest.visible !== "undefined") {
         decidedVisible = !!latest.visible;
@@ -281,13 +262,9 @@ router.post("/upload", async (req, res) => {
         .lean();
 
       if (engageDoc) {
-        if (typeof engageDoc.isBusy === "boolean")
-          posterBusy = !!engageDoc.isBusy;
-        else if (typeof engageDoc.busy === "boolean")
-          posterBusy = !!engageDoc.busy;
-        else if (typeof engageDoc.status === "string")
-          posterBusy =
-            String(engageDoc.status).toLowerCase() === "busy";
+        if (typeof engageDoc.isBusy === "boolean") posterBusy = !!engageDoc.isBusy;
+        else if (typeof engageDoc.busy === "boolean") posterBusy = !!engageDoc.busy;
+        else if (typeof engageDoc.status === "string") posterBusy = String(engageDoc.status).toLowerCase() === "busy";
         else posterBusy = false;
       } else {
         posterBusy = false;
@@ -301,16 +278,9 @@ router.post("/upload", async (req, res) => {
     let addressPayload = null;
     try {
       const locFromBody = req.body && req.body.location;
-      if (
-        locFromBody &&
-        locFromBody.address !== undefined &&
-        locFromBody.address !== null
-      ) {
+      if (locFromBody && locFromBody.address !== undefined && locFromBody.address !== null) {
         addressPayload = normalizeAddress(locFromBody.address);
-      } else if (
-        req.body.address !== undefined &&
-        req.body.address !== null
-      ) {
+      } else if (req.body.address !== undefined && req.body.address !== null) {
         addressPayload = normalizeAddress(req.body.address);
       } else {
         addressPayload = null;
@@ -330,7 +300,7 @@ router.post("/upload", async (req, res) => {
         coordinates: lngLat,
         visible: decidedVisible,
         visibleChangedAt: decidedVisible ? now : undefined,
-        address: addressPayload, // structured object or null
+        address: addressPayload,
       },
       visible: decidedVisible,
       postedByUid: posterUid,
@@ -338,20 +308,16 @@ router.post("/upload", async (req, res) => {
       updatedAt: now,
     };
 
-    // --- denormalize poster snapshot (include posterBusy)
+    // ✅ CHANGE ONLY HERE: User -> KycCardUser
     try {
-      const user = await User.findOne({ uid: posterUid })
+      const user = await KycCardUser.findOne({ uid: posterUid })
         .lean()
         .catch(() => null);
+
       if (user) {
+        const snap = buildPosterSnapshot(user, posterUid);
         newWork.poster = {
-          uid: user.uid || posterUid,
-          name: user.name || user.fullName || "",
-          age: user.age ?? null,
-          mobile: user.mobile || user.phone || "",
-          type: user.type || "",
-          gender: user.gender || "",
-          planType: user.planType || user.plan || "Basic",
+          ...snap,
           posterBusy: !!posterBusy,
           postedByUid: posterUid,
         };
@@ -372,36 +338,25 @@ router.post("/upload", async (req, res) => {
       };
     }
 
-    // --- save
     const created = await Work.create(newWork);
     const saved = await Work.findById(created._id).lean();
 
     return res.json({ isSuccess: true, data: saved });
   } catch (err) {
     console.error("POST /api/works/upload error:", err);
-    return res
-      .status(500)
-      .json({
-        isSuccess: false,
-        error: "UPLOAD_FAILED",
-        errorDetail: err.message || String(err),
-      });
+    return res.status(500).json({
+      isSuccess: false,
+      error: "UPLOAD_FAILED",
+      errorDetail: err.message || String(err),
+    });
   }
 });
 
-
 /**
  * GET /api/works/nearby
- * Query params:
- *  lat, lng (required)
- *  distance (km, default 2)
- *  work (optional prefix filter)
- *  page, limit
  */
-// router.js (or wherever your routes live)
 router.get("/nearby", async (req, res) => {
   try {
-    // expected query params: lat, lng, distance (in km), work, page, limit
     const { lat, lng, distance = 2, work = "", page = 1, limit = 50 } = req.query;
 
     if (typeof lat === "undefined" || typeof lng === "undefined") {
@@ -414,7 +369,7 @@ router.get("/nearby", async (req, res) => {
       return res.status(400).json({ isSuccess: false, error: "Invalid lat/lng" });
     }
 
-    const distNum = Number(distance); // expected in kilometres from client
+    const distNum = Number(distance);
     if (Number.isNaN(distNum) || distNum < 0) {
       return res.status(400).json({ isSuccess: false, error: "Invalid distance" });
     }
@@ -422,10 +377,8 @@ router.get("/nearby", async (req, res) => {
     const pageNum = Math.max(1, parseInt(page || "1", 10));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit || "50", 10)));
 
-    // convert km -> meters for use in geoNear.maxDistance (Mongo uses meters for maxDistance in spherical)
     const maxMeters = distNum > 0 ? distNum * 1000 : 0;
 
-    // optional work filter regex (safe-escaped)
     const workTrim = String(work || "").trim();
     const safeWorkRegex = workTrim
       ? { name: { $regex: "^" + workTrim.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" } }
@@ -456,7 +409,7 @@ router.get("/nearby", async (req, res) => {
     const buildPipeline = (applyWorkFilter = false) => {
       const geoNear = {
         $geoNear: {
-          near: { type: "Point", coordinates: [lngNum, latNum] }, // NOTE: [lng, lat]
+          near: { type: "Point", coordinates: [lngNum, latNum] },
           distanceField: "dist.calculated",
           spherical: true,
         },
@@ -513,10 +466,8 @@ router.get("/nearby", async (req, res) => {
         workMatched = true;
       }
     } catch (aggErr) {
-      // fallback: use $geoWithin + haversine if $geoNear fails (older Mongo or permissions)
       console.warn("geoNear failed, falling back to geoWithin. Error:", aggErr?.message || aggErr);
 
-      // radius in radians for $centerSphere: meters / Earth's radius (in meters 6378137)
       const radiusInRadians = maxMeters > 0 ? maxMeters / 6378137 : (distNum * 1000) / 6378137;
       const baseQuery = {
         location: { $geoWithin: { $centerSphere: [[lngNum, latNum], radiusInRadians] } },
@@ -526,19 +477,30 @@ router.get("/nearby", async (req, res) => {
 
       let docs = [];
       if (safeWorkRegex) {
-        docs = await Work.find({ $and: [baseQuery, safeWorkRegex] }).skip((pageNum - 1) * limitNum).limit(limitNum).lean().catch(() => []);
+        docs = await Work.find({ $and: [baseQuery, safeWorkRegex] })
+          .skip((pageNum - 1) * limitNum)
+          .limit(limitNum)
+          .lean()
+          .catch(() => []);
         if (docs.length === 0) {
-          docs = await Work.find(baseQuery).skip((pageNum - 1) * limitNum).limit(limitNum).lean().catch(() => []);
+          docs = await Work.find(baseQuery)
+            .skip((pageNum - 1) * limitNum)
+            .limit(limitNum)
+            .lean()
+            .catch(() => []);
           workMatched = false;
         } else {
           workMatched = true;
         }
       } else {
-        docs = await Work.find(baseQuery).skip((pageNum - 1) * limitNum).limit(limitNum).lean().catch(() => []);
+        docs = await Work.find(baseQuery)
+          .skip((pageNum - 1) * limitNum)
+          .limit(limitNum)
+          .lean()
+          .catch(() => []);
         workMatched = true;
       }
 
-      // compute haversine distances (km)
       const toRad = (v) => (v * Math.PI) / 180;
       const haversineKm = (lat1, lon1, lat2, lon2) => {
         const R = 6371;
@@ -546,15 +508,15 @@ router.get("/nearby", async (req, res) => {
         const dLon = toRad(lon2 - lon1);
         const a =
           Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
       };
 
       const docsWithDistances = docs.map((d) => {
         const coords = Array.isArray(d.location?.coordinates) ? d.location.coordinates : null;
-        let docLng = null, docLat = null;
+        let docLng = null,
+          docLat = null;
         if (coords && coords.length >= 2) {
           docLng = coords[0];
           docLat = coords[1];
@@ -574,48 +536,44 @@ router.get("/nearby", async (req, res) => {
       return res.json({ isSuccess: true, page: pageNum, limit: limitNum, count: normalized.length, workMatched, data: normalized });
     }
 
-    // final filter (safety) and normalize
-    // final filter (safety) and normalize
-const final = (results || []).filter((r) => {
-  if (!r || !r.location) return false;
-  if (r.location.visible !== true) return false;
-  if (r.poster && r.poster.posterBusy === true) return false;
-  return true;
-});
+    const final = (results || []).filter((r) => {
+      if (!r || !r.location) return false;
+      if (r.location.visible !== true) return false;
+      if (r.poster && r.poster.posterBusy === true) return false;
+      return true;
+    });
 
-const normalized = final
-  .map((w) => normalize(w))
-  // 🔴 STRICT cutoff lagana zaroori hai
-  .filter((w) => w.distanceKm != null && w.distanceKm <= distNum);
+    const normalized = final
+      .map((w) => normalize(w))
+      .filter((w) => w.distanceKm != null && w.distanceKm <= distNum);
 
-return res.json({
-  isSuccess: true,
-  page: pageNum,
-  limit: limitNum,
-  count: normalized.length,
-  workMatched,
-  data: normalized,
-});
-
+    return res.json({
+      isSuccess: true,
+      page: pageNum,
+      limit: limitNum,
+      count: normalized.length,
+      workMatched,
+      data: normalized,
+    });
   } catch (err) {
     console.error("GET /nearby error:", err);
     return res.status(500).json({ isSuccess: false, error: "Server error: " + (err.message || "unknown") });
   }
 });
 
-
 /**
  * GET /api/works/
- * - If ownerUid equals requester, return all works for owner; otherwise only visible.
  */
 router.get("/", async (req, res) => {
-  try { 
+  try {
     const ownerUid = req.query?.ownerUid;
     const asUid = req.query?.asUid;
     const requesterUid = req.user ? (req.user.uid || (req.user._id ? String(req.user._id) : null)) : asUid;
 
     if (ownerUid && requesterUid && String(ownerUid) === String(requesterUid)) {
-      const user = await User.findOne({ uid: ownerUid }).lean().catch(() => null);
+      // ✅ CHANGE: User -> KycCardUser
+      const user = await KycCardUser.findOne({ uid: ownerUid }).lean().catch(() => null);
+
       const filter = user
         ? { $or: [{ postedBy: user._id }, { postedByUid: ownerUid }, { "poster.uid": ownerUid }] }
         : { $or: [{ postedByUid: ownerUid }, { "poster.uid": ownerUid }] };
@@ -647,7 +605,8 @@ router.get("/byUser/:uid", async (req, res) => {
     const { uid } = req.params;
     if (!uid) return res.status(400).json({ isSuccess: false, error: "UID required" });
 
-    const user = await User.findOne({ uid }).lean().catch(() => null);
+    // ✅ CHANGE: User -> KycCardUser
+    const user = await KycCardUser.findOne({ uid }).lean().catch(() => null);
 
     const ownerIsRequester = (() => {
       if (req.user) {
@@ -678,7 +637,6 @@ router.get("/byUser/:uid", async (req, res) => {
 
 /**
  * POST /api/works/bulk-insert
- * Body: array of work documents for seeding
  */
 router.post("/bulk-insert", async (req, res) => {
   try {
@@ -689,7 +647,6 @@ router.post("/bulk-insert", async (req, res) => {
       if (!copy.location) copy.location = {};
       if (typeof copy.location.visible === "undefined") copy.location.visible = true;
       if (!copy.location.visibleChangedAt) copy.location.visibleChangedAt = new Date();
-      // normalize any address inside bulk if present
       if (copy.location && copy.location.address) {
         copy.location.address = normalizeAddress(copy.location.address);
       } else if (copy.address) {
@@ -709,13 +666,11 @@ router.post("/bulk-insert", async (req, res) => {
 
 /**
  * PATCH /api/works/:id
- * Accepts updates for name, description, coords, visible, and address.
  */
 router.patch("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { name, description, coords, visible } = req.body;
-    // accept posterUid either from body or query
     const posterUidFromBody = req.body?.posterUid;
     const posterUidFromQuery = req.query?.posterUid;
     const posterUid = posterUidFromBody || posterUidFromQuery;
@@ -723,7 +678,6 @@ router.patch("/:id", async (req, res) => {
     const existing = await Work.findById(id);
     if (!existing) return res.status(404).json({ isSuccess: false, error: "NOT_FOUND" });
 
-    // Ownership check
     let allowed = false;
     if (req.user) {
       const reqUid = req.user.uid || (req.user._id ? String(req.user._id) : null);
@@ -737,18 +691,15 @@ router.patch("/:id", async (req, res) => {
 
     if (!allowed) return res.status(403).json({ isSuccess: false, error: "FORBIDDEN" });
 
-    // Build patch
     const patch = {};
     if (name !== undefined) patch.name = name;
     if (description !== undefined) patch.description = description;
 
-    // visible
     if (visible !== undefined) {
       patch["location.visible"] = !!visible;
       patch["location.visibleChangedAt"] = new Date();
     }
 
-    // coords
     if (coords) {
       let lat = null;
       let lng = null;
@@ -781,27 +732,16 @@ router.patch("/:id", async (req, res) => {
       }
     }
 
-    // address update (support multiple shapes)
-    // priority:
-    // 1) req.body.location.address
-    // 2) req.body.address
     if (req.body.location && Object.prototype.hasOwnProperty.call(req.body.location, "address")) {
       const raw = req.body.location.address;
-      if (raw === null) {
-        patch["location.address"] = null;
-      } else {
-        patch["location.address"] = normalizeAddress(raw);
-      }
+      if (raw === null) patch["location.address"] = null;
+      else patch["location.address"] = normalizeAddress(raw);
     } else if (Object.prototype.hasOwnProperty.call(req.body, "address")) {
       const raw2 = req.body.address;
-      if (raw2 === null) {
-        patch["location.address"] = null;
-      } else {
-        patch["location.address"] = normalizeAddress(raw2);
-      }
+      if (raw2 === null) patch["location.address"] = null;
+      else patch["location.address"] = normalizeAddress(raw2);
     }
 
-    // perform update
     const updated = await Work.findByIdAndUpdate(id, { $set: patch }, { new: true }).lean();
     if (!updated) return res.status(404).json({ isSuccess: false, error: "NOT_FOUND" });
 
@@ -821,7 +761,6 @@ router.delete("/:id", async (req, res) => {
     const existing = await Work.findById(id).lean();
     if (!existing) return res.status(404).json({ isSuccess: false, error: "NOT_FOUND" });
 
-    // Ownership check
     let allowed = false;
     if (req.user) {
       const reqUid = req.user.uid || (req.user._id ? String(req.user._id) : null);
@@ -846,16 +785,9 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-
 /**
  * POST /api/works/:id/review
- * Body: { reviewerId (string), reviewerName?, rating (1..5), comment?, hireId? }
- * Atomically pushes a review into work.reviews and recomputes reviewCount/totalRating/avgRating.
- * NOTE: requires MongoDB 4.2+ for update pipeline. If older Mongo, we can implement a transaction alternative.
  */
-// assume: import express, mongoose, Work at top of file
-// router variable already defined
-
 router.post("/:id/review", async (req, res) => {
   try {
     const { id } = req.params;
@@ -870,7 +802,6 @@ router.post("/:id/review", async (req, res) => {
       return res.status(400).json({ isSuccess: false, error: "RATING_MUST_BE_1_TO_5" });
     }
 
-    // ensure work exists
     const exists = await Work.exists({ _id: id });
     if (!exists) return res.status(404).json({ isSuccess: false, error: "WORK_NOT_FOUND" });
 
@@ -883,46 +814,34 @@ router.post("/:id/review", async (req, res) => {
       visible: true,
     };
 
-    // attach hireId if provided & valid
     if (hireId && mongoose.Types.ObjectId.isValid(hireId)) {
-      reviewObj.hireId = new mongoose.Types.ObjectId(hireId); // use `new` per mongoose v7+
+      reviewObj.hireId = new mongoose.Types.ObjectId(hireId);
     }
 
-    /**
-     * SAFER pipeline: always treat reviews as array using $ifNull
-     * 1) append to reviews (concatArrays on ifNull("$reviews", []))
-     * 2) compute visibleReviews from the new reviews array
-     * 3) compute reviewCount, totalRating
-     * 4) compute avgRating rounded to 2 decimals
-     * 5) cleanup
-     */
     const pipeline = [
       {
         $set: {
           reviews: {
-            $concatArrays: [
-              { $ifNull: ["$reviews", []] },
-              [reviewObj]
-            ]
-          }
-        }
+            $concatArrays: [{ $ifNull: ["$reviews", []] }, [reviewObj]],
+          },
+        },
       },
       {
         $set: {
           visibleReviews: {
             $filter: {
-              input: { $ifNull: ["$reviews", []] }, // safe fallback
+              input: { $ifNull: ["$reviews", []] },
               as: "r",
-              cond: { $eq: ["$$r.visible", true] }
-            }
-          }
-        }
+              cond: { $eq: ["$$r.visible", true] },
+            },
+          },
+        },
       },
       {
         $set: {
           reviewCount: { $size: "$visibleReviews" },
-          totalRating: { $sum: { $map: { input: "$visibleReviews", as: "r", in: "$$r.rating" } } }
-        }
+          totalRating: { $sum: { $map: { input: "$visibleReviews", as: "r", in: "$$r.rating" } } },
+        },
       },
       {
         $set: {
@@ -930,12 +849,12 @@ router.post("/:id/review", async (req, res) => {
             $cond: [
               { $gt: ["$reviewCount", 0] },
               { $round: [{ $divide: ["$totalRating", "$reviewCount"] }, 2] },
-              0
-            ]
-          }
-        }
+              0,
+            ],
+          },
+        },
       },
-      { $unset: ["visibleReviews"] }
+      { $unset: ["visibleReviews"] },
     ];
 
     const updated = await Work.findByIdAndUpdate(id, pipeline, { new: true }).lean();
@@ -945,7 +864,7 @@ router.post("/:id/review", async (req, res) => {
 
     return res.json({
       isSuccess: true,
-      data: { review: added, reviewCount: updated.reviewCount || 0, avgRating: updated.avgRating || 0 }
+      data: { review: added, reviewCount: updated.reviewCount || 0, avgRating: updated.avgRating || 0 },
     });
   } catch (err) {
     console.error("POST /api/works/:id/review error:", err);
@@ -953,11 +872,8 @@ router.post("/:id/review", async (req, res) => {
   }
 });
 
-
-
 /**
  * GET /api/works/:id/reviews
- * Query: page, limit, sort (asc|desc). Returns only visible reviews (paginated).
  */
 router.get("/:id/reviews", async (req, res) => {
   try {
@@ -970,7 +886,6 @@ router.get("/:id/reviews", async (req, res) => {
     if (!work) return res.status(404).json({ isSuccess: false, error: "WORK_NOT_FOUND" });
 
     const visible = Array.isArray(work.reviews) ? work.reviews.filter((r) => r && r.visible) : [];
-    // sort by createdAt
     visible.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
     if (sortOrder === -1) visible.reverse();
 
