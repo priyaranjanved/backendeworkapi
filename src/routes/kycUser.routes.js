@@ -57,7 +57,7 @@ router.patch("/photo", upload.single("photo"), updateFacePhoto);
 router.post("/user", express.json(), createKycUser);
 
 // ✅ Get by UID
-router.get("/user/uid/:uid", getKycUserByUid);
+router.get("user/byUid/:uid", getUserByUid);
 // ✅ Get by UID
 router.get("/user/uidprofile/:uid", getKycUserByUidProfile);
 

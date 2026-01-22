@@ -1,7 +1,7 @@
 // routes/hire.js
 import express from "express";
 import mongoose from "mongoose";
-import User from "../models/user.js";
+import KycCardUser from "../models/KycCardUser.js"; // ✅ CHANGED (User -> KycCardUser)
 import Hire from "../models/hire.model.js";
 
 const router = express.Router();
@@ -21,8 +21,8 @@ router.post("/hire", async (req, res) => {
     }
 
     // best-effort find user docs
-    const hirer = await User.findOne({ uid: hirerUid }).lean().catch(() => null);
-    const worker = await User.findOne({ uid: workerUid }).lean().catch(() => null);
+    const hirer = await KycCardUser.findOne({ uid: hirerUid }).lean().catch(() => null);
+    const worker = await KycCardUser.findOne({ uid: workerUid }).lean().catch(() => null);
 
     const payload = {
       hirerUid: String(hirerUid),
@@ -39,8 +39,11 @@ router.post("/hire", async (req, res) => {
     if (worker && worker._id) payload.workerId = worker._id;
 
     const created = await Hire.create(payload);
+
+    // NOTE: populate will work only if Hire schema refs point to KycCardUser.
+    // If Hire schema still refs "User", then below populate won't resolve (still safe).
     const populated = await Hire.findById(created._id)
-      .populate({ path: "workerId", select: "uid name mobile aadhaar gender age" })
+      .populate({ path: "workerId", select: "uid fullName mobile gender age planType facePhoto" }) // ✅ CHANGED fields
       .lean();
 
     console.log("POST /api/hire created id=", created._id);
@@ -132,13 +135,15 @@ router.get("/user/byUid/:uid/hired", async (req, res) => {
     console.log("GET /api/user/byUid/:uid/hired -> uid:", uid, "role:", role);
 
     // try find user doc if possible
-    let user = await User.findOne({ uid }).select("_id uid name").lean();
+    let user = await KycCardUser.findOne({ uid }).select("_id uid fullName").lean();
     if (!user && mongoose.Types.ObjectId.isValid(uid)) {
-      user = await User.findById(uid).select("_id uid name").lean();
+      user = await KycCardUser.findById(uid).select("_id uid fullName").lean();
     }
-    if (!user) {
-      user = await User.findOne({ aadhaar: uid }).select("_id uid name").lean();
-    }
+
+    // NOTE: aadhaar wala fallback ab nahi hai (kyunki KycCardUser schema me aadhaar field nahi hai)
+    // if (!user) {
+    //   user = await User.findOne({ aadhaar: uid }).select("_id uid name").lean();
+    // }
 
     // build search clauses based on role
     const orClauses = [];
@@ -161,27 +166,39 @@ router.get("/user/byUid/:uid/hired", async (req, res) => {
     // lookup other party user docs if available (we'll try to populate the other side)
     const otherIds = [];
     if (role === "worker") {
-      // need to show hirer info
       otherIds.push(...hires.map(h => h.hirerId).filter(Boolean));
     } else {
-      // default hirer view already finds workers; keep existing behavior
       otherIds.push(...hires.map(h => h.workerId).filter(Boolean));
     }
 
     let othersById = {};
     if (otherIds.length > 0) {
-      const others = await User.find({ _id: { $in: otherIds } }).select("uid name mobile aadhaar gender age").lean();
+      const others = await KycCardUser.find({ _id: { $in: otherIds } })
+        .select("uid fullName mobile gender age planType facePhoto")
+        .lean();
+
       othersById = others.reduce((acc, u) => { acc[String(u._id)] = u; return acc; }, {});
     }
 
     const data = hires.map(h => {
-      // build the item depending on role
       if (role === "worker") {
-        // show hirer as the "other" party
-        const hirerInfo = (h.hirerId && othersById[String(h.hirerId)]) || (h.hirerUid ? { uid: h.hirerUid, name: h.hirerUid, mobile: null } : null);
+        const hirerInfo =
+          (h.hirerId && othersById[String(h.hirerId)]) ||
+          (h.hirerUid ? { uid: h.hirerUid, fullName: h.hirerUid, mobile: null } : null);
+
         return {
           _id: h._id,
-          hirer: hirerInfo,
+          hirer: hirerInfo
+            ? {
+                uid: hirerInfo.uid || h.hirerUid || "—",
+                fullName: hirerInfo.fullName || hirerInfo.uid || "Unknown",
+                mobile: hirerInfo.mobile || "—",
+                gender: hirerInfo.gender || null,
+                age: hirerInfo.age ?? null,
+                planType: hirerInfo.planType || null,
+                facePhoto: hirerInfo.facePhoto || null,
+              }
+            : null,
           startedAt: h.startedAt,
           endedAt: h.endedAt,
           payment: h.payment,
@@ -191,20 +208,29 @@ router.get("/user/byUid/:uid/hired", async (req, res) => {
           metadata: h.metadata || {}
         };
       } else {
-        // default: existing worker-focused response
         const workerInfo = (h.workerId && othersById[String(h.workerId)]) || null;
+
         const workerFallback = workerInfo || {
           uid: h.workerUid || "—",
-          name: workerInfo?.name || "Unknown",
+          fullName: workerInfo?.fullName || "Unknown",
           mobile: workerInfo?.mobile || "—",
-          aadhaar: workerInfo?.aadhaar || h.workerUid || "—",
           gender: workerInfo?.gender || null,
-          age: workerInfo?.age ?? null
+          age: workerInfo?.age ?? null,
+          planType: workerInfo?.planType || null,
+          facePhoto: workerInfo?.facePhoto || null,
         };
 
         return {
           _id: h._id,
-          worker: workerFallback,
+          worker: {
+            uid: workerFallback.uid || "—",
+            fullName: workerFallback.fullName || "Unknown",
+            mobile: workerFallback.mobile || "—",
+            gender: workerFallback.gender || null,
+            age: workerFallback.age ?? null,
+            planType: workerFallback.planType || null,
+            facePhoto: workerFallback.facePhoto || null,
+          },
           startedAt: h.startedAt,
           endedAt: h.endedAt,
           payment: h.payment,
@@ -222,8 +248,5 @@ router.get("/user/byUid/:uid/hired", async (req, res) => {
     return res.status(500).json({ isSuccess: false, error: "Server error", detail: err?.message || String(err) });
   }
 });
-
-
-
 
 export default router;
