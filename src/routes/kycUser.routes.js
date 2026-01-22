@@ -10,9 +10,10 @@ import {
   updatePlanType,
   updateFacePhoto,
   createKycUser,
-  getUserByUid,
+  getKycUserByUid,
   upsertKycUserByUid,
-  getKycUserByUidProfile
+  getKycUserByUidProfile,
+  getUserByUid
 } from "../controllers/kycUser.controller.js";
 
 const router = express.Router();
@@ -57,9 +58,11 @@ router.patch("/photo", upload.single("photo"), updateFacePhoto);
 router.post("/user", express.json(), createKycUser);
 
 // ✅ Get by UID
-router.get("user/byUid/:uid", getUserByUid);
+router.get("/user/uid/:uid", getKycUserByUid);
 // ✅ Get by UID
 router.get("/user/uidprofile/:uid", getKycUserByUidProfile);
+
+router.get("user/byUid/:uid", getUserByUid);
 
 // ✅ Upsert by UID (create or update)
 router.post("/user/uid/:uid", express.json(), upsertKycUserByUid);
