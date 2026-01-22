@@ -10,7 +10,7 @@ import {
   updatePlanType,
   updateFacePhoto,
   createKycUser,
-  getKycUserByUid,
+  getUserByUid,
   upsertKycUserByUid,
   getKycUserByUidProfile
 } from "../controllers/kycUser.controller.js";
