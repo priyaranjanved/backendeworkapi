@@ -370,6 +370,142 @@ export const upsertKycUserByUid = async (req, res) => {
   }
 };
 
+
+
+// ✅ ADD THESE APIs in your existing KYC controller file (same file where registerKycUser etc are)
+
+// 1) ACTIVATE PREMIUM (1 year) by uid
+// POST /api/kyc/activate-premium/:uid
+export const activatePremiumOneYear = async (req, res) => {
+  try {
+    const raw = req.params.uid ?? "";
+    const cleaned = String(raw).trim();
+    if (!cleaned) {
+      return res.status(400).json({ ok: false, error: "MISSING_UID" });
+    }
+
+    // find by uid OR _id
+    let user = await KycCardUser.findOne({ uid: cleaned });
+    if (!user && /^[0-9a-fA-F]{24}$/.test(cleaned)) {
+      user = await KycCardUser.findById(cleaned);
+    }
+
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "USER_NOT_FOUND" });
+    }
+
+    // ✅ If already premium and not expired, no need to re-activate
+    const now = new Date();
+    if (
+      user.planType === "Premium" &&
+      user.planInsurance?.enabled === true &&
+      user.planInsurance?.endDate &&
+      now <= new Date(user.planInsurance.endDate)
+    ) {
+      return res.json({
+        ok: true,
+        message: "ALREADY_PREMIUM_ACTIVE",
+        uid: user.uid,
+        planType: user.planType,
+        planInsurance: user.planInsurance,
+      });
+    }
+
+    // ✅ Activate / Renew for 1 year from now
+    await user.activatePlanInsurance();
+
+    const updated = await KycCardUser.findById(user._id).lean();
+
+    return res.json({
+      ok: true,
+      message: "PREMIUM_ACTIVATED_1_YEAR",
+      uid: updated.uid,
+      planType: updated.planType,
+      planInsurance: updated.planInsurance || null,
+      user: updated,
+    });
+  } catch (err) {
+    console.error("activatePremiumOneYear error:", err);
+    return res.status(500).json({ ok: false, error: "ACTIVATE_PREMIUM_ERROR" });
+  }
+};
+
+// 2) CHECK PREMIUM EXPIRE (downgrade to Basic if expired)
+// POST /api/kyc/check-premium/:uid
+export const checkPremiumExpire = async (req, res) => {
+  try {
+    const raw = req.params.uid ?? "";
+    const cleaned = String(raw).trim();
+    if (!cleaned) {
+      return res.status(400).json({ ok: false, error: "MISSING_UID" });
+    }
+
+    let user = await KycCardUser.findOne({ uid: cleaned });
+    if (!user && /^[0-9a-fA-F]{24}$/.test(cleaned)) {
+      user = await KycCardUser.findById(cleaned);
+    }
+
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "USER_NOT_FOUND" });
+    }
+
+    // default: downgradeToBasic = true
+    const downgradeToBasic =
+      typeof req.body?.downgradeToBasic === "boolean" ? req.body.downgradeToBasic : true;
+
+    const expiredNow = await user.checkAndExpirePlanInsurance(downgradeToBasic);
+    const updated = await KycCardUser.findById(user._id).lean();
+
+    return res.json({
+      ok: true,
+      uid: updated.uid,
+      planType: updated.planType,
+      planInsurance: updated.planInsurance || null,
+      expiredNow,
+      user: updated,
+    });
+  } catch (err) {
+    console.error("checkPremiumExpire error:", err);
+    return res.status(500).json({ ok: false, error: "CHECK_PREMIUM_ERROR" });
+  }
+};
+
+// 3) GET PLAN STATUS (login time helper)
+// GET /api/kyc/plan/:uid
+export const getPlanStatusByUid = async (req, res) => {
+  try {
+    const raw = req.params.uid ?? "";
+    const cleaned = String(raw).trim();
+    if (!cleaned) {
+      return res.status(400).json({ ok: false, error: "MISSING_UID" });
+    }
+
+    const user = await KycCardUser.findOne({ uid: cleaned }).lean();
+    if (!user) return res.status(404).json({ ok: false, error: "USER_NOT_FOUND" });
+
+    const now = new Date();
+    const endDate = user.planInsurance?.endDate ? new Date(user.planInsurance.endDate) : null;
+
+    const isPremiumActive =
+      user.planType === "Premium" &&
+      user.planInsurance?.enabled === true &&
+      endDate &&
+      now <= endDate;
+
+    return res.json({
+      ok: true,
+      uid: user.uid,
+      planType: user.planType,
+      isPremiumActive,
+      planInsurance: user.planInsurance || null,
+      expiresAt: endDate ? endDate.toISOString() : null,
+    });
+  } catch (err) {
+    console.error("getPlanStatusByUid error:", err);
+    return res.status(500).json({ ok: false, error: "PLAN_STATUS_ERROR" });
+  }
+};
+
 // ✅ UPDATE PHOTO (compressed + base64)
 export const updateFacePhoto = async (req, res) => {
   try {

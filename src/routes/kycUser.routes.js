@@ -13,7 +13,10 @@ import {
   getKycUserByUid,
   upsertKycUserByUid,
   getKycUserByUidProfile,
-  getUserByUid
+  getUserByUid,
+   activatePremiumOneYear,
+  checkPremiumExpire,
+  getPlanStatusByUid,
 } from "../controllers/kycUser.controller.js";
 
 const router = express.Router();
@@ -64,6 +67,10 @@ router.get("/user/uidprofile/:uid", getKycUserByUidProfile);
 
 router.get("user/byUid/:uid", getUserByUid);
 
+
+router.post("user/activate-premium/:uid", activatePremiumOneYear);
+router.post("user/check-premium/:uid", checkPremiumExpire);
+router.get("user/plan/:uid", getPlanStatusByUid);
 // ✅ Upsert by UID (create or update)
 router.post("/user/uid/:uid", express.json(), upsertKycUserByUid);
 
